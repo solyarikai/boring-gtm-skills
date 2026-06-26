@@ -1,223 +1,199 @@
 # SmartLead Playbook
 
-## Оглавление
-- [Зачем это нужно](#зачем-это-нужно)
-- [Когда идти в SmartLead](#когда-идти-в-smartlead)
-- [Как работать](#как-работать)
-- [Ежедневный ритуал](#ежедневный-ритуал)
-- [Проверка перед запуском кампании](#проверка-перед-запуском-кампании)
-- [Работа с лидами](#работа-с-лидами)
-- [Работа с последовательностями писем](#работа-с-последовательностями-писем)
-- [Работа с почтовыми аккаунтами](#работа-с-почтовыми-аккаунтами)
-- [Работа с ответами](#работа-с-ответами)
-- [Аналитика и здоровье кампании](#аналитика-и-здоровье-кампании)
-- [Что делать, если что-то пошло не так](#что-делать-если-что-то-пошло-не-так)
-- [Типовые сценарии](#типовые-сценарии)
-- [Частые ошибки](#частые-ошибки)
-- [Что всегда сообщать по итогу](#что-всегда-сообщать-по-итогу)
+## Why this exists
 
-## Зачем это нужно
+Use this playbook to work with SmartLead as an outreach operating center, not as a loose API surface. SmartLead can change live campaign state, sequences, lead status, mailbox assignment, and inbox categories. The workflow must make dangerous lines explicit.
 
-Этот playbook нужен, чтобы работать со SmartLead как с операционным центром аутрича, а не как с хаотичной админкой. Тут лежит нормальный порядок действий: что проверить, в каком порядке смотреть, когда тормозить и когда уже пушить дальше.
+The core rule is simple: read first, preview second, write only after human approval.
 
-## Когда идти в SmartLead
+## When to use SmartLead
 
-Иди сюда, когда нужно:
-- посмотреть, что происходит с кампаниями;
-- проверить, загрузились ли лиды;
-- понять, идут ли отправки;
-- посмотреть ответы;
-- проверить, какие аккаунты участвуют в рассылке;
-- выгрузить данные для аудита;
-- быстро найти, где именно сломался запуск.
+Use the SmartLead skill when you need to:
 
-Если задача про реальное состояние кампаний, лидов, инбокса и отправок, это правильная точка входа.
+- inspect campaigns;
+- export or inspect campaign leads;
+- prepare or upload lead batches;
+- inspect or update sequences;
+- inspect sender accounts;
+- read campaign analytics;
+- inspect replies;
+- prepare notes, categories, or inbox actions.
 
-## Как работать
+If the task is about actual email outreach state, this is the right entry point.
 
-Нормальный режим такой:
-- сначала понять цель;
-- потом посмотреть текущее состояние;
-- потом сверить, не затрёт ли изменение что-то живое;
-- потом сделать превью;
-- только потом вносить изменения.
+## Operating order
 
-Не работай вслепую. В SmartLead многие действия выглядят безобидно, а по факту могут перетереть уже настроенное состояние.
+The normal sequence is:
 
-## Ежедневный ритуал
+1. Clarify the campaign, lead, account, sequence, or inbox scope.
+2. Read current state.
+3. Identify whether the requested operation can overwrite or trigger production behavior.
+4. Use dry-run for every write-sensitive operation.
+5. Show the payload and warnings.
+6. Require explicit approval before live writes.
+7. Verify the result after a live write.
+8. Report counts, skipped records, errors, and output artifacts.
 
-Если нужен обычный ежедневный проход, смотри в таком порядке:
-- активные кампании;
-- количество лидов и движение по ним;
-- ответы и новые диалоги;
-- состояние почтовых аккаунтов;
-- провалы по отправке;
-- общую картину по аналитике.
+Do not make campaign changes based only on memory or old local notes. Check current API docs when behavior is ambiguous.
 
-Цель ежедневного прохода не в том, чтобы ковырять всё подряд, а чтобы быстро ответить на три вопроса:
-- отправка вообще идёт или нет;
-- ответы приходят или нет;
-- есть ли явная поломка, которую надо чинить прямо сейчас.
+## Daily check
 
-## Проверка перед запуском кампании
+A useful daily pass is:
 
-Перед запуском новой кампании проверь:
-- понятное название;
-- правильную аудиторию;
-- не задвоены ли лиды;
-- готова ли цепочка писем;
-- подключены ли нужные аккаунты;
-- нет ли очевидного риска, что кампания стартанёт в кривом виде.
+- list active campaigns;
+- check lead volume and movement;
+- inspect replies;
+- inspect sender account state;
+- inspect campaign analytics;
+- identify blocked or stalled areas.
 
-Если хоть один из этих пунктов мутный, не запускай. Сначала разрули исходные данные.
+The goal is to answer:
 
-## Работа с лидами
+- Are emails sending?
+- Are replies coming in?
+- Are bounces, unsubscribes, or account issues rising?
+- Is anything broken enough to stop or pause?
 
-С лидами здесь три основных режима:
-- проверить, что уже загружено;
-- загрузить новую партию;
-- выгрузить текущую базу для сверки или чистки.
+## Pre-launch campaign check
 
-Перед загрузкой партии смотри:
-- кто эти лиды;
-- зачем именно они идут в эту кампанию;
-- нет ли дублей;
-- хватает ли ключевых полей для нормальной персонализации;
-- не мешаются ли они с предыдущими волнами.
+Before starting or expanding a campaign, check:
 
-После загрузки смотри:
-- сколько лидов реально попало в кампанию;
-- сколько отвалилось;
-- были ли пропуски;
-- совпадает ли итог с ожиданием.
+- clear campaign name and status;
+- correct audience;
+- lead count and required fields;
+- duplicate risk;
+- sequence exists and matches the campaign logic;
+- sender accounts are attached;
+- schedule is configured;
+- recent analytics do not show obvious risk.
 
-## Работа с последовательностями писем
+If any of those are unclear, do not launch. Fix the input or configuration first.
 
-Последовательность писем надо смотреть не как набор блоков, а как механику общения.
+## Leads
 
-Проверь:
-- есть ли у цепочки внятная логика;
-- нет ли слишком резких скачков по тону;
-- не выглядит ли второе письмо так, будто первое никто не читал;
-- нет ли явных проблем с персонализацией;
-- не ведёт ли вся цепочка к слабому или размытому действию.
+Lead work has three modes:
 
-Перед любым обновлением цепочки нужно понимать: меняешь мелочь или фактически пересобираешь весь сценарий. Если второе, относись к этому как к чувствительному изменению.
+- inspect current campaign leads;
+- export for audit;
+- prepare or upload a new batch.
 
-## Работа с почтовыми аккаунтами
+Before uploading, check:
 
-По аккаунтам смотри:
-- все ли нужные аккаунты на месте;
-- нет ли выключенных или проблемных;
-- не перегружены ли отдельные аккаунты;
-- распределяется ли нагрузка адекватно;
-- не отвалилась ли часть инфраструктуры.
+- required fields;
+- duplicate keys;
+- local or CRM blocklist;
+- campaign destination;
+- batch size;
+- whether upload should ignore global blocklist or cross-campaign duplicates.
 
-Если кампания стоит, а лиды и письма выглядят нормально, очень часто проблема именно в аккаунтах.
+After upload, report:
 
-## Работа с ответами
+- attempted leads;
+- added leads;
+- skipped leads;
+- skipped reasons;
+- batch count;
+- whether lead IDs were returned.
 
-Ответы разбирай как отдельный слой, а не просто как хвост кампании.
+Live uploads must require `--confirm-live`.
 
-Смотри:
-- сколько новых ответов;
-- есть ли позитивные сигналы;
-- есть ли отписки и негатив;
-- не пошёл ли поток автоответов;
-- нет ли повторяющейся проблемы в одном и том же сообщении.
+## Sequences
 
-Если ответы пошли криво, это почти всегда сигнал либо к плохому таргету, либо к слабому офферу, либо к кривой формулировке первого письма.
+Treat sequence updates as sensitive. A sequence update can change live campaign behavior.
 
-## Аналитика и здоровье кампании
+Before setting sequences:
 
-Смотри на аналитику не ради красивых процентов, а ради ответа на вопрос: живая ли кампания.
+- read current sequence;
+- validate the new JSON;
+- compare step count;
+- compare subjects, bodies, variants, and delays;
+- check whether `delay_in_days` is relative to the previous email;
+- check whether email body formatting uses `<br>` instead of raw newlines;
+- dry-run first.
 
-Признаки живой кампании:
-- лиды реально двигаются;
-- письма уходят;
-- ответы появляются;
-- нет явного затыка в одной точке;
-- картина по аккаунтам и ответам не выглядит поломанной.
+If the change is effectively a full sequence rewrite, say that explicitly.
 
-Если что-то не бьётся, сначала проверяй механику, потом уже качество аудитории и текста.
+## Sender accounts
 
-## Что делать, если что-то пошло не так
+Account issues often explain campaign problems.
 
-Если видишь проблему, не надо сразу всё пересобирать. Иди по порядку:
-- понять масштаб;
-- понять, локальная это поломка или системная;
-- проверить, страдает одна кампания или несколько;
-- проверить, это проблема лидов, цепочки, аккаунтов или инбокса;
-- только потом менять состояние.
+Check:
 
-Обычно самые частые реальные поломки такие:
-- лиды не загрузились как ожидалось;
-- аккаунты не тянут отправку;
-- цепочка обновилась не так, как планировалось;
-- ответы есть, но их никто не разбирает;
-- кампания есть, а движения по ней почти нет.
+- accounts attached to the campaign;
+- warmup status if available;
+- daily limits;
+- whether the account pool matches campaign volume;
+- whether specific accounts are overloaded or inactive.
 
-## Типовые сценарии
+If campaign activity is quiet while leads and sequences look correct, inspect accounts before rewriting copy.
 
-### Аудит кампании
+## Replies and inbox
 
-Нужно быстро понять, что происходит:
-- смотри статус кампании;
-- смотри объём лидов;
-- смотри есть ли движение;
-- смотри есть ли ответы;
-- смотри не упирается ли всё в аккаунты.
+Treat replies as a separate operational layer.
 
-### Подготовка новой волны
+Check:
 
-Нужно залить новую аудиторию:
-- сначала валидируешь состав лидов;
-- потом сверяешь, куда именно они пойдут;
-- потом проверяешь, подходит ли цепочка;
-- потом загружаешь;
-- потом сразу сверяешь факт загрузки.
+- new replies;
+- positive signals;
+- negative or unsubscribe signals;
+- auto-replies;
+- repeated issues linked to one campaign or message;
+- whether a lead needs category update, note, or manual response.
 
-### Пересборка цепочки
+Do not mix reply handling with launch preparation unless the task explicitly asks for both.
 
-Нужно обновить письма:
-- сначала понять, что именно не работает;
-- потом пересобрать логику;
-- потом проверить, не сломаешь ли текущую механику;
-- потом только применять изменения.
+## Analytics and campaign health
 
-### Разбор ответов
+Analytics should answer whether the campaign is alive and whether risk is rising.
 
-Нужно оценить реакцию:
-- отдельно смотри позитив;
-- отдельно негатив;
-- отдельно автоответы;
-- ищи повторяющиеся паттерны.
+Useful metrics:
 
-### Проверка перед отчётом
+- sent count;
+- open/reply/click counts when available;
+- positive replies;
+- bounces;
+- unsubscribes;
+- sequence-level performance;
+- date-range changes.
 
-Нужно собрать картину для человека:
-- сколько кампаний в работе;
-- сколько лидов в игре;
-- есть ли новые ответы;
-- где узкие места;
-- что требует следующего действия.
+If metrics look wrong, inspect mechanics first: campaign status, leads, sequence, accounts, and inbox.
 
-## Частые ошибки
+## Common scenarios
 
-- Смотреть только на статус кампании и не смотреть на фактическое движение.
-- Загружать лидов без проверки состава.
-- Менять цепочку без понимания, что она влияет на живую рассылку.
-- Игнорировать состояние аккаунтов.
-- Считать, что отсутствие ответов всегда означает плохой текст.
-- Не разделять позитивные ответы, негатив и автоответы.
+### Campaign audit
 
-## Что всегда сообщать по итогу
+Read campaign status, lead count, sequence, accounts, inbox replies, and analytics. Report the likely bottleneck and whether a write is needed.
 
-После любой работы по SmartLead всегда сообщай:
-- сколько кампаний просмотрел;
-- сколько лидов нашёл, загрузил или выгрузил;
-- были ли пропуски или ошибки;
-- были ли ответы и какого типа;
-- нашёл ли проблему;
-- что изменилось после действия;
-- что нужно делать следующим шагом.
+### New lead batch
+
+Validate the lead file, dedupe/blocklist locally, split into batches, dry-run the payload, then ask for live approval.
+
+### Sequence update
+
+Read current sequence, validate new JSON, generate a diff, dry-run the update, and only then ask for approval.
+
+### Reply review
+
+Read replies, classify response types, identify next actions, and avoid changing categories or sending replies unless approved.
+
+## Frequent mistakes
+
+- Looking only at campaign status and ignoring actual movement.
+- Uploading leads without validating fields or duplicates.
+- Updating a sequence without understanding replacement behavior.
+- Ignoring account health.
+- Treating no replies as only a copy problem before checking sending mechanics.
+- Mixing positive replies, negative replies, and auto-replies in one bucket.
+
+## What to report
+
+After any SmartLead work, report:
+
+- campaigns inspected;
+- leads found, exported, prepared, uploaded, or skipped;
+- sequence/account/analytics state if relevant;
+- errors and skipped reasons;
+- output files created;
+- whether any live write happened.
+
+If no live write happened, say that explicitly.

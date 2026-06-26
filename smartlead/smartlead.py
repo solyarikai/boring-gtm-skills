@@ -7,6 +7,7 @@ master-inbox, and docs shortcuts.
 
 import argparse
 import csv
+import hashlib
 import json
 import os
 import random
@@ -16,7 +17,7 @@ import time
 from datetime import datetime
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from pathlib import Path
 
 try:
@@ -38,6 +39,11 @@ DEFAULT_REQUEST_GAP = 1.05
 MAX_RETRIES = 5
 LEADS_ADD_BATCH_SIZE = 400
 PAGINATION_LIMIT = 100
+
+EXIT_VALIDATION = 1
+EXIT_BLOCKED_WRITE = 2
+EXIT_WARNINGS = 3
+EXIT_INPUT = 4
 
 
 def build_ssl_context():
@@ -190,6 +196,220 @@ def maybe_dry_run(args, method, endpoint, body=None, params=None):
     return False
 
 
+def load_json_file(path, label="JSON"):
+    """Load a JSON file with operator-friendly errors."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"ERROR: {label} file not found: {path}", file=sys.stderr)
+        sys.exit(EXIT_INPUT)
+    except json.JSONDecodeError as e:
+        print(f"ERROR: {label} file is malformed JSON: {path}: {e}", file=sys.stderr)
+        sys.exit(EXIT_INPUT)
+
+
+def write_json_file(path, data):
+    """Write pretty JSON and create parent directories."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False, default=str) + "\n")
+
+
+def ensure_output_dir(path):
+    """Create an output directory or exit with a deterministic input error."""
+    output_dir = Path(path)
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"ERROR: cannot create output dir {path}: {e}", file=sys.stderr)
+        sys.exit(EXIT_INPUT)
+    return output_dir
+
+
+def _as_list(data, preferred_keys=()):
+    """Return the most likely list payload from mixed API/file response shapes."""
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        for key in preferred_keys:
+            value = data.get(key)
+            if isinstance(value, list):
+                return value
+        for key in ("data", "results", "items", "records"):
+            value = data.get(key)
+            if isinstance(value, list):
+                return value
+    return []
+
+
+def extract_sequences(payload):
+    """Normalize sequence payloads from files and SmartLead API responses."""
+    return _as_list(payload, preferred_keys=("sequences", "sequence", "steps"))
+
+
+def _body_text(step):
+    """Get an email body from common SmartLead/API shapes."""
+    return (
+        step.get("email_body")
+        or step.get("body")
+        or step.get("message")
+        or step.get("html")
+        or ""
+    )
+
+
+def _subject_text(step):
+    """Get an email subject from common SmartLead/API shapes."""
+    return step.get("subject") or step.get("email_subject") or ""
+
+
+def _delay_days(step):
+    """Get relative delay in days from common sequence shapes."""
+    delay_details = step.get("seq_delay_details") or step.get("delay_details") or {}
+    value = (
+        delay_details.get("delay_in_days")
+        if isinstance(delay_details, dict)
+        else None
+    )
+    if value is None:
+        value = step.get("delay_in_days", step.get("delay"))
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def sequence_summary(step, index):
+    """Compact, stable sequence step fingerprint for human review and diffs."""
+    body = _body_text(step)
+    variants = step.get("variants") or step.get("variant_details") or []
+    return {
+        "index": index,
+        "seq_number": step.get("seq_number") or step.get("step") or index,
+        "subject": _subject_text(step),
+        "body_preview": " ".join(body.split())[:120],
+        "body_hash": hashlib.sha256(body.encode("utf-8")).hexdigest()[:16],
+        "delay_in_days": _delay_days(step),
+        "variants": len(variants) if isinstance(variants, list) else 0,
+    }
+
+
+def validate_sequence_payload(payload):
+    """Validate SmartLead sequences without calling the API."""
+    errors = []
+    warnings = []
+    sequences = extract_sequences(payload)
+
+    if not sequences:
+        errors.append("No sequence steps found. Expected a list or {'sequences': [...]}.")
+        return sequences, errors, warnings
+
+    for index, step in enumerate(sequences, 1):
+        if not isinstance(step, dict):
+            errors.append(f"Step {index}: expected object, got {type(step).__name__}.")
+            continue
+
+        body = _body_text(step)
+        subject = _subject_text(step)
+        delay = _delay_days(step)
+
+        if not subject:
+            warnings.append(f"Step {index}: missing subject.")
+        if not body:
+            warnings.append(f"Step {index}: missing body.")
+        if "\n" in body:
+            warnings.append(
+                f"Step {index}: body contains raw newline characters; confirm SmartLead renders them as intended."
+            )
+        if delay is None:
+            warnings.append(f"Step {index}: delay_in_days is missing or non-numeric.")
+        elif delay < 0 or delay > 30:
+            warnings.append(
+                f"Step {index}: suspicious delay_in_days={delay}; SmartLead delays are relative to the previous email."
+            )
+
+    return sequences, errors, warnings
+
+
+def diff_sequence_summaries(current, proposed):
+    """Compare normalized sequence summaries."""
+    current_rows = [sequence_summary(step, i) for i, step in enumerate(current, 1)]
+    proposed_rows = [sequence_summary(step, i) for i, step in enumerate(proposed, 1)]
+    diffs = []
+    if len(current_rows) != len(proposed_rows):
+        diffs.append(
+            {
+                "field": "step_count",
+                "current": len(current_rows),
+                "proposed": len(proposed_rows),
+            }
+        )
+
+    for index in range(max(len(current_rows), len(proposed_rows))):
+        cur = current_rows[index] if index < len(current_rows) else None
+        new = proposed_rows[index] if index < len(proposed_rows) else None
+        if cur is None or new is None:
+            diffs.append({"step": index + 1, "field": "step_exists", "current": cur, "proposed": new})
+            continue
+        for field in ("subject", "body_hash", "delay_in_days", "variants"):
+            if cur.get(field) != new.get(field):
+                diffs.append(
+                    {
+                        "step": index + 1,
+                        "field": field,
+                        "current": cur.get(field),
+                        "proposed": new.get(field),
+                    }
+                )
+    return {"current": current_rows, "proposed": proposed_rows, "diffs": diffs}
+
+
+def _lead_value(lead, key):
+    """Normalize a lead dedupe key."""
+    if key == "email":
+        return str(lead.get("email") or lead.get("Email") or "").strip().lower()
+    if key == "linkedin":
+        return str(
+            lead.get("linkedin")
+            or lead.get("linkedin_url")
+            or lead.get("LinkedIn")
+            or ""
+        ).strip().rstrip("/").lower()
+    if key == "domain":
+        raw = lead.get("domain") or lead.get("website") or lead.get("company_url") or ""
+        raw = str(raw).strip().lower()
+        if raw.startswith(("http://", "https://")):
+            raw = urlparse(raw).netloc
+        return raw.removeprefix("www.")
+    return ""
+
+
+def load_blocklist_values(path):
+    """Load blocklisted emails/domains/linkedin values from a CSV."""
+    if not path:
+        return set()
+    values = set()
+    try:
+        with open(path, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            if reader.fieldnames:
+                for row in reader:
+                    for key in ("email", "linkedin", "linkedin_url", "domain"):
+                        value = (row.get(key) or "").strip().lower().rstrip("/")
+                        if value:
+                            values.add(value.removeprefix("www."))
+            else:
+                f.seek(0)
+                for row in csv.reader(f):
+                    if row and row[0].strip():
+                        values.add(row[0].strip().lower().rstrip("/").removeprefix("www."))
+    except FileNotFoundError:
+        print(f"ERROR: blocklist CSV not found: {path}", file=sys.stderr)
+        sys.exit(EXIT_INPUT)
+    return values
+
+
 def cmd_docs(args):
     """Print SmartLead documentation entry points."""
     print("SmartLead docs:")
@@ -282,6 +502,72 @@ def cmd_campaigns_schedule(args):
         return
     data = api_post(f"/campaigns/{args.campaign_id}/schedule", body)
     out(data)
+
+
+def cmd_campaign_preflight(args):
+    """Read-only campaign launch/preflight summary."""
+    campaign = api_get(f"/campaigns/{args.campaign_id}")
+    sequences_payload = api_get(f"/campaigns/{args.campaign_id}/sequences")
+    accounts_payload = api_get(f"/campaigns/{args.campaign_id}/email-accounts")
+    analytics = api_get(f"/campaigns/{args.campaign_id}/statistics")
+
+    sequences = extract_sequences(sequences_payload)
+    accounts = _as_list(accounts_payload, preferred_keys=("email_accounts", "accounts"))
+    warnings = []
+    blockers = []
+
+    status = str(campaign.get("status") or campaign.get("campaign_status") or "").upper()
+    if status in {"ACTIVE", "STARTED", "RUNNING"}:
+        warnings.append(
+            "Campaign appears active; avoid sequence or lead changes during send windows."
+        )
+    if not sequences:
+        blockers.append("No sequence steps found.")
+    if not accounts:
+        blockers.append("No email accounts found for this campaign.")
+
+    if sequences:
+        _, _, sequence_warnings = validate_sequence_payload(sequences)
+        warnings.extend(sequence_warnings)
+
+    report = {
+        "campaign_id": args.campaign_id,
+        "campaign": campaign,
+        "summary": {
+            "status": status or "unknown",
+            "sequence_steps": len(sequences),
+            "email_accounts": len(accounts),
+            "analytics_keys": sorted(analytics.keys()) if isinstance(analytics, dict) else [],
+        },
+        "sequences": [
+            sequence_summary(step, i)
+            for i, step in enumerate(sequences, 1)
+            if isinstance(step, dict)
+        ],
+        "accounts": accounts,
+        "analytics": analytics,
+        "warnings": warnings,
+        "blockers": blockers,
+    }
+
+    if args.json:
+        out(report)
+    else:
+        print(f"Campaign preflight: {args.campaign_id}")
+        print(f"- status: {report['summary']['status']}")
+        print(f"- sequence steps: {report['summary']['sequence_steps']}")
+        print(f"- email accounts: {report['summary']['email_accounts']}")
+        print(f"- blockers: {len(blockers)}")
+        print(f"- warnings: {len(warnings)}")
+        for blocker in blockers:
+            print(f"BLOCKER: {blocker}")
+        for warning in warnings:
+            print(f"WARN: {warning}")
+
+    if blockers:
+        sys.exit(EXIT_VALIDATION)
+    if warnings:
+        sys.exit(EXIT_WARNINGS)
 
 
 # ---------------------------------------------------------------------------
@@ -438,10 +724,12 @@ def cmd_leads_add(args):
     """Add leads to campaign from JSON file (max 400 per batch)."""
     if not args.dry_run and not args.confirm_live:
         print("ERROR: live leads-add requires --confirm-live", file=sys.stderr)
-        sys.exit(2)
+        sys.exit(EXIT_BLOCKED_WRITE)
 
-    with open(args.file, "r") as f:
-        all_leads = json.load(f)
+    all_leads = load_json_file(args.file, label="leads")
+    if not isinstance(all_leads, list):
+        print("ERROR: leads file must contain a JSON array", file=sys.stderr)
+        sys.exit(EXIT_INPUT)
 
     # Optional: add your own deduplication/blocklist check here
     # e.g. check against a local CSV, your CRM, or a database
@@ -485,6 +773,138 @@ def cmd_leads_add(args):
         f"\nTotal batches: {total_batches}, added: {total_added}, skipped: {total_skipped}",
         file=sys.stderr,
     )
+
+
+def cmd_prepare_upload(args):
+    """Prepare SmartLead upload files without sending leads to SmartLead."""
+    leads = load_json_file(args.file, label="leads")
+    if not isinstance(leads, list):
+        print("ERROR: leads file must contain a JSON array", file=sys.stderr)
+        sys.exit(EXIT_INPUT)
+
+    output_dir = ensure_output_dir(args.output_dir)
+    batches_dir = output_dir / "payload_batches"
+    batches_dir.mkdir(parents=True, exist_ok=True)
+
+    blocklist = load_blocklist_values(args.blocklist_csv)
+    seen = set()
+    ready = []
+    rejected = []
+
+    for index, lead in enumerate(leads, 1):
+        if not isinstance(lead, dict):
+            rejected.append({"row": index, "reason": "not_an_object", "value": "", "lead": lead})
+            continue
+
+        email = _lead_value(lead, "email")
+        dedupe_value = _lead_value(lead, args.dedupe_key)
+        blocklist_values = {
+            _lead_value(lead, "email"),
+            _lead_value(lead, "linkedin"),
+            _lead_value(lead, "domain"),
+        }
+        blocklist_values.discard("")
+
+        if not email:
+            rejected.append({"row": index, "reason": "missing_email", "value": "", "lead": lead})
+            continue
+        if args.blocklist_csv and blocklist_values.intersection(blocklist):
+            rejected.append(
+                {
+                    "row": index,
+                    "reason": "blocklisted",
+                    "value": ",".join(sorted(blocklist_values.intersection(blocklist))),
+                    "lead": lead,
+                }
+            )
+            continue
+        if not dedupe_value:
+            rejected.append(
+                {
+                    "row": index,
+                    "reason": f"missing_{args.dedupe_key}",
+                    "value": "",
+                    "lead": lead,
+                }
+            )
+            continue
+        if dedupe_value in seen:
+            rejected.append(
+                {
+                    "row": index,
+                    "reason": f"duplicate_{args.dedupe_key}",
+                    "value": dedupe_value,
+                    "lead": lead,
+                }
+            )
+            continue
+        seen.add(dedupe_value)
+        ready.append(lead)
+
+    write_json_file(output_dir / "ready.json", ready)
+
+    rejected_path = output_dir / "rejected.csv"
+    with rejected_path.open("w", newline="", encoding="utf-8") as f:
+        fieldnames = ["row", "reason", "value", "email", "linkedin", "domain", "lead_json"]
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for item in rejected:
+            lead = item["lead"] if isinstance(item["lead"], dict) else {}
+            writer.writerow(
+                {
+                    "row": item["row"],
+                    "reason": item["reason"],
+                    "value": item["value"],
+                    "email": _lead_value(lead, "email"),
+                    "linkedin": _lead_value(lead, "linkedin"),
+                    "domain": _lead_value(lead, "domain"),
+                    "lead_json": json.dumps(item["lead"], ensure_ascii=False, default=str),
+                }
+            )
+
+    batch_paths = []
+    for batch_index, start in enumerate(range(0, len(ready), LEADS_ADD_BATCH_SIZE), 1):
+        batch = ready[start : start + LEADS_ADD_BATCH_SIZE]
+        batch_path = batches_dir / f"batch_{batch_index:03d}.json"
+        write_json_file(
+            batch_path,
+            {
+                "campaign_id": args.campaign_id,
+                "method": "POST",
+                "endpoint": f"/campaigns/{args.campaign_id}/leads",
+                "body": {"lead_list": batch},
+            },
+        )
+        batch_paths.append(str(batch_path))
+
+    summary = {
+        "campaign_id": args.campaign_id,
+        "input_leads": len(leads),
+        "ready_leads": len(ready),
+        "rejected_leads": len(rejected),
+        "dedupe_key": args.dedupe_key,
+        "blocklist_csv": args.blocklist_csv,
+        "batch_size": LEADS_ADD_BATCH_SIZE,
+        "payload_batches": batch_paths,
+        "outputs": {
+            "ready": str(output_dir / "ready.json"),
+            "rejected": str(rejected_path),
+            "summary": str(output_dir / "summary.json"),
+        },
+    }
+    write_json_file(output_dir / "summary.json", summary)
+
+    if args.json:
+        out(summary)
+    else:
+        print(f"Prepared SmartLead upload for campaign {args.campaign_id}")
+        print(f"- ready: {len(ready)}")
+        print(f"- rejected: {len(rejected)}")
+        print(f"- batches: {len(batch_paths)}")
+        print(f"- output_dir: {output_dir}")
+
+    if rejected:
+        sys.exit(EXIT_WARNINGS)
 
 
 def cmd_leads_search(args):
@@ -599,8 +1019,7 @@ def cmd_sequences_get(args):
 
 def cmd_sequences_set(args):
     """Create/update sequences from JSON file."""
-    with open(args.file, "r") as f:
-        sequences = json.load(f)
+    sequences = load_json_file(args.file, label="sequences")
     body = {"sequences": sequences}
     if maybe_dry_run(args, "POST", f"/campaigns/{args.campaign_id}/sequences", body=body):
         return
@@ -608,6 +1027,67 @@ def cmd_sequences_set(args):
         f"/campaigns/{args.campaign_id}/sequences", body
     )
     out(data)
+
+
+def cmd_sequence_validate(args):
+    """Validate a local SmartLead sequence JSON file."""
+    payload = load_json_file(args.file, label="sequences")
+    sequences, errors, warnings = validate_sequence_payload(payload)
+    report = {
+        "file": args.file,
+        "steps": [sequence_summary(step, i) for i, step in enumerate(sequences, 1) if isinstance(step, dict)],
+        "errors": errors,
+        "warnings": warnings,
+    }
+
+    if args.json:
+        out(report)
+    else:
+        print(f"Sequence validation: {args.file}")
+        print(f"- steps: {len(sequences)}")
+        print(f"- errors: {len(errors)}")
+        print(f"- warnings: {len(warnings)}")
+        for error in errors:
+            print(f"ERROR: {error}")
+        for warning in warnings:
+            print(f"WARN: {warning}")
+
+    if errors:
+        sys.exit(EXIT_VALIDATION)
+    if warnings:
+        sys.exit(EXIT_WARNINGS)
+
+
+def cmd_sequence_diff(args):
+    """Compare live campaign sequences with a local sequence JSON file."""
+    proposed_payload = load_json_file(args.file, label="proposed sequences")
+    proposed, errors, warnings = validate_sequence_payload(proposed_payload)
+    if errors:
+        for error in errors:
+            print(f"ERROR: {error}", file=sys.stderr)
+        sys.exit(EXIT_VALIDATION)
+
+    current_payload = api_get(f"/campaigns/{args.campaign_id}/sequences")
+    current = extract_sequences(current_payload)
+    diff = diff_sequence_summaries(current, proposed)
+    diff["campaign_id"] = args.campaign_id
+    diff["warnings"] = warnings
+
+    if args.json:
+        out(diff)
+    else:
+        print(f"Sequence diff for campaign {args.campaign_id}")
+        print(f"- current steps: {len(diff['current'])}")
+        print(f"- proposed steps: {len(diff['proposed'])}")
+        print(f"- differences: {len(diff['diffs'])}")
+        for item in diff["diffs"]:
+            prefix = f"step {item.get('step')}: " if item.get("step") else ""
+            print(f"{prefix}{item['field']}: {item['current']} -> {item['proposed']}")
+        for warning in warnings:
+            print(f"WARN: {warning}")
+
+    if warnings:
+        sys.exit(EXIT_WARNINGS)
 
 
 # ---------------------------------------------------------------------------
@@ -877,6 +1357,11 @@ def build_parser():
     add_dry_run_flag(p)
     p.set_defaults(func=cmd_campaigns_schedule)
 
+    p = sub.add_parser("campaign-preflight", help="Read-only launch/preflight summary")
+    p.add_argument("campaign_id", type=int)
+    p.add_argument("--json", action="store_true", help="Output as JSON")
+    p.set_defaults(func=cmd_campaign_preflight)
+
     # --- leads ---
     p = sub.add_parser("leads", help="List leads (JSON)")
     p.add_argument("campaign_id", type=int)
@@ -907,6 +1392,20 @@ def build_parser():
     p.add_argument("--confirm-live", action="store_true", help="required for live uploads")
     add_dry_run_flag(p)
     p.set_defaults(func=cmd_leads_add)
+
+    p = sub.add_parser("prepare-upload", help="Prepare SmartLead lead upload files locally")
+    p.add_argument("campaign_id", type=int)
+    p.add_argument("file", help="JSON file with leads array")
+    p.add_argument("--output-dir", required=True, help="Directory for ready/rejected/batches")
+    p.add_argument("--blocklist-csv", help="Optional CSV with email/linkedin/domain columns")
+    p.add_argument(
+        "--dedupe-key",
+        choices=["email", "linkedin", "domain"],
+        default="email",
+        help="Lead key used for local deduplication",
+    )
+    p.add_argument("--json", action="store_true", help="Output summary as JSON")
+    p.set_defaults(func=cmd_prepare_upload)
 
     p = sub.add_parser("leads-search", help="Search lead by email")
     p.add_argument("email")
@@ -975,6 +1474,17 @@ def build_parser():
     p.add_argument("file", help="JSON file with sequences array")
     add_dry_run_flag(p)
     p.set_defaults(func=cmd_sequences_set)
+
+    p = sub.add_parser("sequence-validate", help="Validate a local SmartLead sequence JSON")
+    p.add_argument("file", help="JSON file with sequences array")
+    p.add_argument("--json", action="store_true", help="Output as JSON")
+    p.set_defaults(func=cmd_sequence_validate)
+
+    p = sub.add_parser("sequence-diff", help="Read-only diff of live vs local sequences")
+    p.add_argument("campaign_id", type=int)
+    p.add_argument("file", help="JSON file with proposed sequences")
+    p.add_argument("--json", action="store_true", help="Output as JSON")
+    p.set_defaults(func=cmd_sequence_diff)
 
     # --- email accounts ---
     p = sub.add_parser("accounts", help="List all email accounts")

@@ -1,0 +1,14 @@
+[
+  {
+    "seq_number": 1,
+    "seq_delay_details": { "delay_in_days": 0 },
+    "subject": "Partnership idea for {{company_name}}",
+    "email_body": "Hi {{first_name}},<br><br>I noticed your team is expanding partner-led growth. Worth comparing notes?"
+  },
+  {
+    "seq_number": 2,
+    "seq_delay_details": { "delay_in_days": 3 },
+    "subject": "Re: Partnership idea for {{company_name}}",
+    "email_body": "Quick follow-up, {{first_name}}.<br><br>Should I send a short example?"
+  }
+]

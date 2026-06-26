@@ -1,0 +1,4 @@
+bucket,lead_uuid,reply_intent,text
+reply_now,lead_001,meeting_signal,"Sounds good, let's book a demo next week."
+redirect_research,lead_002,redirect,"Please contact our founder instead."
+follow_up_later,lead_003,timing_later,"Maybe later, reach out next month."

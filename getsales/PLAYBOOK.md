@@ -1,328 +1,228 @@
 # GetSales Playbook
 
-## Оглавление
-- [Зачем это нужно](#зачем-это-нужно)
-- [Когда идти в GetSales](#когда-идти-в-getsales)
-- [Как работать](#как-работать)
-- [Ежедневный ритуал](#ежедневный-ритуал)
-- [Работа со списками](#работа-со-списками)
-- [Работа с потоками](#работа-с-потоками)
-- [Работа с лидами](#работа-с-лидами)
-- [Работа с отправителями](#работа-с-отправителями)
-- [Работа с сообщениями и инбоксом](#работа-с-сообщениями-и-инбоксом)
-- [Работа с ответами лидов](#работа-с-ответами-лидов)
-- [Очереди действий по ответам](#очереди-действий-по-ответам)
-- [Статистика и здоровье системы](#статистика-и-здоровье-системы)
-- [Что делать, если что-то пошло не так](#что-делать-если-что-то-пошло-не-так)
-- [Типовые сценарии](#типовые-сценарии)
-- [Частые ошибки](#частые-ошибки)
-- [Что всегда сообщать по итогу](#что-всегда-сообщать-по-итогу)
-
-## Зачем это нужно
-
-Этот playbook нужен, чтобы работать с GetSales как с машиной для движения лидов и сообщений, а не как с мутной системой, где непонятно, что реально происходит.
-
-Здесь собран практический порядок: что смотреть первым, как проверять состояние, когда грузить лидов, когда лезть в потоки и как не потерять картину по сообщениям.
-
-## Когда идти в GetSales
-
-Иди сюда, когда нужно:
-- посмотреть списки и их состав;
-- проверить потоки и понять, идут ли они;
-- загрузить новых лидов;
-- выгрузить текущую базу;
-- найти конкретного контакта;
-- посмотреть сообщения и реакции;
-- собрать общую картину по активности.
-
-Если задача про реальное движение лидов через списки, потоки и инбокс, это правильная точка входа.
+## Why this exists
 
-## Как работать
+Use this playbook to work with GetSales as an operating system for LinkedIn leads, flows, sender profiles, and messages. The goal is not to expose every API endpoint. The goal is to give an agent or operator a repeatable way to inspect state, prepare changes, and stop before risky writes.
 
-Нормальный порядок такой:
-- сначала понять, что именно нужно узнать или изменить;
-- потом посмотреть текущее состояние;
-- потом убедиться, что изменение не создаст бардак;
-- потом сделать превью;
-- только потом подтверждать действие.
-
-GetSales может выглядеть как обычная CRM-обвязка, но там легко потерять контроль, если менять состояние без проверки.
-
-## Ежедневный ритуал
-
-Ежедневный проход лучше делать так:
-- посмотреть, какие списки сейчас в игре;
-- посмотреть, какие потоки активны;
-- посмотреть сообщения и новые ответы;
-- проверить, нет ли странной тишины там, где должно быть движение;
-- убедиться, что отправители живы и работают.
-
-Цель ежедневного прохода:
-- понять, есть ли движение;
-- найти узкое место;
-- отделить нормальный шум от реальной проблемы.
-
-## Работа со списками
+GetSales can look like a simple CRM wrapper, but operational control gets messy quickly when lists, flows, sender profiles, messages, and replies are inspected separately. This playbook keeps the workflow boring and predictable.
 
-Списки здесь надо воспринимать как основу порядка.
-
-Проверяй:
-- что список соответствует задаче;
-- нет ли в нём мусора;
-- не смешаны ли туда разные сегменты;
-- не ушли ли туда лиды, которым там не место;
-- можно ли по этому списку безопасно работать дальше.
+## When to use GetSales
 
-Перед загрузкой новой партии важно понимать, в какой именно список она идёт и зачем.
+Use the GetSales skill when you need to:
 
-## Работа с потоками
+- inspect lists and their contents;
+- check whether flows are active and moving;
+- upload or prepare leads;
+- export contacts for audit or routing;
+- find a specific contact or conversation;
+- inspect messages, replies, and sender profile activity;
+- build reply queues from LinkedIn inbox activity.
 
-Потоки смотри как на живую механику продвижения лида.
+If the task is about lead movement through lists, flows, sender profiles, or LinkedIn inbox state, this is the right entry point.
 
-Проверяй:
-- какие потоки активны;
-- куда именно добавляются лиды;
-- нет ли зависших контактов;
-- не застрял ли поток без видимого результата;
-- нет ли признаков, что люди идут не в тот сценарий.
+## Operating order
 
-Если поток есть, но жизнь в нём не чувствуется, это уже повод копать глубже.
+The normal sequence is:
 
-## Работа с лидами
+1. Clarify the exact read or change.
+2. Read current state.
+3. Check whether the change can create duplicate or incorrect outreach.
+4. Preview the payload or export.
+5. Ask for approval before any live write.
+6. Report counts, skipped records, warnings, and output files.
 
-У лидов здесь три главных режима:
-- найти и проверить;
-- загрузить новую партию;
-- выгрузить для аудита, фильтрации или переноса.
+Do not treat a list, flow, or inbox export as self-explanatory. Always explain what it means operationally.
 
-Перед загрузкой смотри:
-- кто эти люди;
-- в какой список они идут;
-- не дублируются ли они;
-- хватает ли данных для адекватной работы;
-- не конфликтуют ли они с уже идущими процессами.
+## Daily check
 
-После загрузки смотри:
-- сколько реально добавилось;
-- сколько пропустилось;
-- не отвалились ли отдельные записи;
-- совпал ли итог с ожиданием.
+A useful daily pass is:
 
-## Работа с отправителями
+- list active flows;
+- inspect sender profiles;
+- inspect recent inbox messages;
+- classify new replies;
+- check whether a flow has gone quiet unexpectedly;
+- export action queues if human follow-up is needed.
 
-Отправители в GetSales часто выглядят как фон, пока не случится затык. Поэтому их нужно проверять отдельно.
+The goal is to answer:
 
-Смотри:
-- все ли отправители на месте;
-- нет ли перекоса по нагрузке;
-- нет ли отправителей, которые вроде подключены, но фактически не двигают работу;
-- хватает ли пула под текущий объём.
+- Is anything moving?
+- Are replies arriving?
+- Is there a bottleneck?
+- Which replies need action now?
 
-Если по потокам тишина, а лиды на месте, один из первых кандидатов на проверку — именно отправители.
+## Lists
 
-## Работа с сообщениями и инбоксом
+Treat lists as the base layer of order.
 
-Инбокс и сообщения — это не просто журнал событий. Это место, где видно, как система общается с живыми людьми.
+Before adding or using a list, check:
 
-Смотри:
-- есть ли новые входящие;
-- есть ли ответы, требующие действия;
-- не забился ли поток однотипным шумом;
-- нет ли повторяющихся проблем в одном и том же сценарии;
-- понятно ли, где позитив, где негатив, а где просто служебный мусор.
+- whether it matches the task;
+- whether segments are mixed together;
+- whether required fields are present;
+- whether the list overlaps with an existing launch;
+- whether the list is safe to attach to a flow.
 
-Если сообщения есть, но никто их не разбирает, система начинает выглядеть активной только на бумаге.
+Before uploading a new batch, understand exactly which list it goes into and why.
 
-## Работа с ответами лидов
+## Flows
 
-Ответы лидов здесь надо смотреть как рабочую очередь, а не как просто ленту сообщений.
+Treat flows as live mechanics, not static configuration.
 
-Нормальный порядок такой:
-- сначала отделить живые ответы от шума;
-- потом понять намерение человека;
-- потом решить, нужен ли ответ, редирект, пауза или закрытие;
-- потом уже передавать это дальше в работу.
+Check:
 
-Удобно держать в голове такие типы ответов:
-- явный интерес;
-- сигнал на встречу или созвон;
-- “неинтересно”;
-- “не ко мне”;
-- “напишите другому человеку”;
-- “вернитесь позже”;
-- “мы уже ваши клиенты”;
-- короткое подтверждение без явного next step;
-- автоответ.
+- which flows are active;
+- where new leads will be attached;
+- whether contacts are stuck;
+- whether messages are going out;
+- whether replies map back to the expected flow;
+- whether sender distribution looks sane.
 
-Это уже не просто косметика. От того, как ты разложишь replies, зависит, будет ли команда реально работать с инбоксом или просто тонуть в шуме.
+If a flow exists but message or reply movement is quiet, inspect sender profiles and messages before blaming the audience.
 
-## Очереди действий по ответам
+## Leads and contacts
 
-После разбора replies их нужно раскладывать по действиям.
+There are three main modes:
 
-### Отвечать сейчас
+- find and inspect;
+- export for audit or routing;
+- prepare or add to a list or flow.
 
-Сюда идут:
-- явный интерес;
-- запрос на созвон;
-- просьба прислать детали;
-- позитивный ответ, где человек ждёт следующего шага.
+Before adding leads, check:
 
-Здесь задача простая: не проебать момент.
+- identity quality;
+- list destination;
+- duplicate risk;
+- required fields;
+- whether the lead is already attached to a flow;
+- whether the action is a local prep step or a live platform write.
 
-### Редиректить
+After adding leads, report:
 
-Сюда идут:
-- “это не ко мне”;
-- “я не decision maker”;
-- “напишите CEO / фаундеру / в HQ”;
-- “я больше не работаю в компании”.
+- how many were attempted;
+- how many were created or updated;
+- how many were skipped;
+- why records were skipped;
+- which output artifacts were created.
 
-Это не плохие ответы. Это ответы, где надо быстро перестроить маршрут.
+## Sender profiles
 
-### Вернуться позже
+Sender profiles often look like background infrastructure until something breaks.
 
-Сюда идут:
-- “сейчас не время”;
-- “вернитесь на следующей неделе”;
-- “дайте время на анализ”;
-- “напомните позже”.
+Check:
 
-Это отдельная очередь. Если такие ответы не складывать отдельно, они просто исчезают из поля зрения.
+- whether expected senders exist;
+- whether one sender is carrying too much load;
+- whether sender state looks inactive or inconsistent;
+- whether reply or message distribution is skewed.
 
-### Закрыть
+If a flow is quiet while leads exist, sender profile health is one of the first things to inspect.
 
-Сюда идут:
-- явное “неинтересно”;
-- просьбы не писать;
-- ответы, где очевидно, что продолжение только ухудшит ситуацию.
+## Messages and inbox
 
-Тут важна дисциплина: не тянуть мёртвый лид дальше только потому, что жалко терять объём.
+Inbox and message reads are not just logs. They are the closest view of how the system is interacting with real people.
 
-### Не трогать
+Check:
 
-Сюда идут:
-- автоответы;
-- короткие “спасибо” без сигнала на движение;
-- шум, который не требует действия прямо сейчас.
+- new inbound messages;
+- action-worthy replies;
+- auto-reply noise;
+- redirect and wrong-person replies;
+- repeated issues in one flow;
+- timing-later replies that need a follow-up queue.
 
-Это не приоритетная очередь. Её задача не мешать разбирать то, что реально двигает пайплайн.
+Do not leave replies as raw inbox rows. Turn them into action buckets.
 
-## Статистика и здоровье системы
+## Reply action queues
 
-Статистику здесь стоит смотреть как индикатор движения, а не как витрину чисел.
+Use reply classification as a triage layer, not as final truth.
 
-Хорошая картина обычно выглядит так:
-- лиды реально перемещаются;
-- списки не стоят мёртвым грузом;
-- потоки живые;
-- сообщения приходят;
-- ответы не теряются;
-- понятно, сколько среди ответов интереса, отказов, редиректов и “вернитесь позже”;
-- нет ощущения, что всё держится на одном случайном узком месте.
+Suggested buckets:
 
-Если цифры есть, а движения нет, проблема обычно не в отчёте, а в самой механике.
+- `reply_now`: meeting signals, explicit interest, or requests for details;
+- `redirect_research`: wrong-person and redirect replies;
+- `follow_up_later`: timing-later replies;
+- `suppress`: clear not-interested or unsubscribe signals;
+- `auto_reply_ignore`: out-of-office and automated replies;
+- `review`: ambiguous or high-value edge cases.
 
-## Что делать, если что-то пошло не так
+Important replies should still be checked by a human.
 
-Если видишь странность, не надо сразу всё пересобирать.
+## Statistics and health
 
-Иди по шагам:
-- понять, где именно проблема;
-- отделить локальную поломку от общей;
-- проверить, это касается списка, потока, лида, отправителя или инбокса;
-- оценить масштаб;
-- только потом вносить изменения.
+Statistics should answer whether the system is alive, not just produce a dashboard.
 
-Типовые проблемы:
-- лиды не попали туда, куда должны были;
-- поток висит без движения;
-- сообщения есть, но их тяжело разгрести;
-- ответы лежат кучей без разметки по действиям;
-- ответы есть, но команда не отличает “неинтересно” от “вернитесь позже”;
-- список выглядит живым, но фактически бесполезен;
-- отправители не тянут текущую нагрузку.
+Useful checks:
 
-## Типовые сценарии
+- total contacts in scope;
+- message volume;
+- inbound reply volume;
+- reply intent distribution;
+- sender profile distribution;
+- flow distribution;
+- stalled or quiet flows.
 
-### Быстрый аудит системы
+If numbers do not match expectations, first verify mechanics. Only then judge targeting or copy.
 
-Когда нужно быстро понять обстановку:
-- смотри списки;
-- смотри потоки;
-- смотри сообщения;
-- смотри отправителей;
-- ищи, где пропало движение.
+## Common scenarios
 
-### Загрузка новой партии лидов
+### Flow audit
 
-Когда приходит новый список:
-- сначала проверяешь состав;
-- потом понимаешь, куда он должен лечь;
-- потом загружаешь;
-- потом сверяешь факт с ожиданием.
+Use when a flow may be stuck.
 
-### Выгрузка базы
+Check:
 
-Когда нужно забрать текущие данные:
-- сначала решаешь, что именно нужно выгрузить;
-- потом проверяешь полноту;
-- потом смотришь, нет ли мусора и дублей;
-- потом уже используешь это дальше для анализа или переноса.
+- flow exists and status is expected;
+- contacts are attached;
+- messages exist;
+- replies exist;
+- sender profiles are involved;
+- reply buckets show real movement.
 
-### Проверка потока
+### Reply triage
 
-Когда непонятно, жив ли поток:
-- смотри, есть ли в нём лиды;
-- смотри, есть ли движение;
-- смотри, есть ли сообщения;
-- смотри, не упирается ли всё в отправителей.
+Use when the inbox is noisy.
 
-### Разбор ответов
+Run reply classification, export action queues, and report:
 
-Когда нужно оценить качество реакции:
-- отделяешь важные ответы от шума;
-- раскладываешь ответы по очередям действий;
-- ищешь повторяющиеся паттерны;
-- смотришь, не указывает ли это на проблему в аудитории, сценарии или выборе контакта.
+- how many replies were scanned;
+- how many require a response;
+- how many are redirects;
+- how many should be followed up later;
+- how many should be suppressed;
+- which file contains the action queue.
 
-### Разбор reply queue
+### Upload preparation
 
-Когда нужно навести порядок в ответах:
-- сначала отделяешь интерес от шума;
-- потом вытаскиваешь редиректы;
-- потом собираешь “вернитесь позже” в отдельную очередь;
-- потом закрываешь явные отказы;
-- потом смотришь, что осталось неоднозначным и требует ручного чтения.
+Use when leads are about to move into GetSales.
 
-### Проверка качества таргета
+Check:
 
-Когда replies выглядят слабо:
-- смотри долю “не ко мне”;
-- смотри долю “неинтересно”;
-- смотри, не слишком ли много коротких вежливых отбоев;
-- смотри, не говорит ли это, что мы пишем не тем ролям или не с тем заходом.
+- required fields;
+- list destination;
+- duplicates;
+- flow destination;
+- dry-run payload preview;
+- approval before live write.
 
-## Частые ошибки
+## Frequent mistakes
 
-- Смотреть только на наличие списка и не смотреть на его качество.
-- Лить новых лидов в поток без проверки, куда они попадают.
-- Путать активность с результатом.
-- Не разделять рабочие ответы и шум.
-- Не разделять “не ко мне”, “неинтересно” и “вернитесь позже”.
-- Считать любой reply полезным сигналом.
-- Оставлять replies без следующего действия.
-- Игнорировать состояние отправителей.
-- Пытаться чинить всё сразу, не локализовав проблему.
+- Looking only at flow status and ignoring message movement.
+- Treating raw inbox rows as handled replies.
+- Uploading leads without checking list purpose.
+- Ignoring sender profile distribution.
+- Treating auto-replies as real engagement.
+- Letting timing-later replies disappear instead of creating a follow-up queue.
 
-## Что всегда сообщать по итогу
+## What to report
 
-После любой работы по GetSales всегда сообщай:
-- сколько списков, потоков или лидов посмотрел;
-- сколько лидов загрузил, выгрузил или нашёл;
-- были ли пропуски, дубли или ошибки;
-- были ли новые ответы и сколько их;
-- как ответы разложились по очередям: интерес, редирект, позже, отказ, шум;
-- где именно нашлась проблема;
-- что изменилось после действия;
-- что логично делать следующим шагом.
+After any GetSales work, report:
+
+- commands or read scope used;
+- number of lists, flows, contacts, messages, or replies inspected;
+- output files created;
+- skipped or ambiguous records;
+- warnings and their likely cause;
+- whether any live write happened.
+
+If no live write happened, say that explicitly.

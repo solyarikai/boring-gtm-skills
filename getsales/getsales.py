@@ -28,6 +28,11 @@ DEFAULT_REQUEST_GAP = 0.35
 MAX_RETRIES = 4
 PAGINATION_LIMIT = 100
 
+EXIT_VALIDATION = 1
+EXIT_BLOCKED_WRITE = 2
+EXIT_WARNINGS = 3
+EXIT_INPUT = 4
+
 
 def _build_ssl_context():
     candidates = []
@@ -356,6 +361,34 @@ def api_delete(path, params=None):
 
 def out(data):
     print(json.dumps(data, indent=2, ensure_ascii=False, default=str))
+
+
+def load_json_file(path, label="JSON"):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"ERROR: {label} file not found: {path}", file=sys.stderr)
+        sys.exit(EXIT_INPUT)
+    except json.JSONDecodeError as e:
+        print(f"ERROR: {label} file is malformed JSON: {path}: {e}", file=sys.stderr)
+        sys.exit(EXIT_INPUT)
+
+
+def write_json_file(path, data):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False, default=str) + "\n")
+
+
+def ensure_output_dir(path):
+    output_dir = Path(path)
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"ERROR: cannot create output dir {path}: {e}", file=sys.stderr)
+        sys.exit(EXIT_INPUT)
+    return output_dir
 
 
 def preview_request(method, path, body=None, params=None):
@@ -951,6 +984,178 @@ def cmd_replies_export(args):
     print(f"Exported {len(rows)} replies to {args.output} (reported total={reported_total})")
 
 
+def reply_action_bucket(intent):
+    if intent in {"meeting_signal", "positive_interest", "existing_customer"}:
+        return "reply_now"
+    if intent in {"redirect", "wrong_person"}:
+        return "redirect_research"
+    if intent == "timing_later":
+        return "follow_up_later"
+    if intent == "not_interested":
+        return "suppress"
+    if intent == "auto_reply":
+        return "auto_reply_ignore"
+    return "review"
+
+
+def flatten_reply_row(item):
+    automation = extract_automation(item)
+    intel = classify_reply_intent(item.get("text", ""))
+    bucket = reply_action_bucket(intel["intent"])
+    return {
+        "bucket": bucket,
+        "uuid": item.get("uuid", ""),
+        "lead_uuid": item.get("lead_uuid", ""),
+        "conversation_uuid": item.get("linkedin_conversation_uuid", ""),
+        "sender_profile_uuid": item.get("sender_profile_uuid", ""),
+        "automation_uuid": automation.get("uuid", ""),
+        "automation_name": automation.get("name", ""),
+        "reply_class": intel["simple_class"],
+        "reply_intent": intel["intent"],
+        "matched_pattern": intel["matched_pattern"],
+        "status": item.get("status", ""),
+        "sent_at": item.get("sent_at", ""),
+        "created_at": item.get("created_at", ""),
+        "text": item.get("text", ""),
+    }
+
+
+def load_reply_rows(args):
+    if getattr(args, "fixture", None):
+        payload = load_json_file(args.fixture, label="reply fixture")
+        return payload if isinstance(payload, list) else payload.get("data", [])
+
+    params = build_message_filters(args, force_inbox=True)
+    rows = []
+    for batch, _ in iter_paginated_messages(params, max_pages=args.max_pages):
+        rows.extend(batch)
+    return rows
+
+
+def cmd_reply_triage(args):
+    rows = load_reply_rows(args)
+    output_dir = ensure_output_dir(args.output_dir)
+
+    buckets = {
+        "reply_now": [],
+        "redirect_research": [],
+        "follow_up_later": [],
+        "suppress": [],
+        "auto_reply_ignore": [],
+        "review": [],
+    }
+    for item in rows:
+        flat = flatten_reply_row(item)
+        buckets[flat["bucket"]].append(flat)
+
+    fieldnames = [
+        "bucket",
+        "uuid",
+        "lead_uuid",
+        "conversation_uuid",
+        "sender_profile_uuid",
+        "automation_uuid",
+        "automation_name",
+        "reply_class",
+        "reply_intent",
+        "matched_pattern",
+        "status",
+        "sent_at",
+        "created_at",
+        "text",
+    ]
+    outputs = {}
+    for bucket, bucket_rows in buckets.items():
+        path = output_dir / f"{bucket}.csv"
+        with path.open("w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(bucket_rows)
+        outputs[bucket] = str(path)
+
+    summary = {
+        "automation": args.automation,
+        "source": args.fixture or "api",
+        "total_replies": len(rows),
+        "buckets": {bucket: len(bucket_rows) for bucket, bucket_rows in buckets.items()},
+        "outputs": outputs,
+        "summary_path": str(output_dir / "summary.json"),
+    }
+    write_json_file(output_dir / "summary.json", summary)
+
+    if args.json:
+        out(summary)
+    else:
+        print(f"Reply triage complete: {len(rows)} replies")
+        for bucket, count in summary["buckets"].items():
+            print(f"- {bucket}: {count}")
+        print(f"- output_dir: {output_dir}")
+
+
+def cmd_flow_health(args):
+    print(FLOW_UUID_FILTER_WARNING, file=sys.stderr)
+    params = {
+        "filter[automation]": args.flow_uuid,
+        "order_field": args.order_field,
+        "order_type": args.order_type,
+    }
+    if args.fixture:
+        payload = load_json_file(args.fixture, label="flow health fixture")
+        rows = payload if isinstance(payload, list) else payload.get("data", [])
+    else:
+        rows = []
+        for batch, _ in iter_paginated_messages(params, max_pages=args.max_pages):
+            rows.extend(batch)
+
+    type_counts = Counter()
+    sender_counts = Counter()
+    reply_intents = Counter()
+    lead_uuids = set()
+    conversations = set()
+
+    for item in rows:
+        message_type = item.get("type") or item.get("message_type") or "unknown"
+        type_counts[str(message_type)] += 1
+        sender_counts[str(item.get("sender_profile_uuid") or "EMPTY")] += 1
+        if item.get("lead_uuid"):
+            lead_uuids.add(item["lead_uuid"])
+        if item.get("linkedin_conversation_uuid"):
+            conversations.add(item["linkedin_conversation_uuid"])
+        if message_type == "inbox" or item.get("text"):
+            intent = classify_reply_intent(item.get("text", "")).get("intent")
+            reply_intents[intent] += 1
+
+    warnings = [
+        "Flow health is based on message aggregation; direct flow_uuid lead search can fail server-side."
+    ]
+    if not rows:
+        warnings.append("No messages found for this flow in the selected window.")
+
+    report = {
+        "flow_uuid": args.flow_uuid,
+        "source": args.fixture or "api",
+        "messages": len(rows),
+        "unique_leads": len(lead_uuids),
+        "unique_conversations": len(conversations),
+        "message_types": dict(type_counts.most_common()),
+        "reply_intents": dict(reply_intents.most_common()),
+        "sender_distribution": dict(sender_counts.most_common(20)),
+        "warnings": warnings,
+    }
+
+    if args.json:
+        out(report)
+    else:
+        print(f"Flow health: {args.flow_uuid}")
+        print(f"- messages: {report['messages']}")
+        print(f"- unique leads: {report['unique_leads']}")
+        print(f"- conversations: {report['unique_conversations']}")
+        print(f"- reply buckets: {report['reply_intents']}")
+        print(f"- senders: {report['sender_distribution']}")
+        for warning in warnings:
+            print(f"WARN: {warning}")
+
+
 def cmd_stats_contacts(args):
     filter_obj = maybe_json(args.filter_json, "filter-json") if args.filter_json else {}
     if args.flow_uuid:
@@ -1286,6 +1491,25 @@ def build_parser():
     p.add_argument("--order-field", default="created_at")
     p.add_argument("--order-type", default="desc", choices=["asc", "desc"])
     p.set_defaults(func=cmd_replies_export)
+
+    p = sub.add_parser("reply-triage", help="Create action queues from inbound replies")
+    p.add_argument("--automation")
+    p.add_argument("--output-dir", required=True)
+    p.add_argument("--fixture", help="Local reply export JSON for demo/test mode")
+    p.add_argument("--max-pages", type=int, default=50)
+    p.add_argument("--order-field", default="created_at")
+    p.add_argument("--order-type", default="desc", choices=["asc", "desc"])
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_reply_triage)
+
+    p = sub.add_parser("flow-health", help="Aggregate flow health from messages")
+    p.add_argument("flow_uuid")
+    p.add_argument("--fixture", help="Local message export JSON for demo/test mode")
+    p.add_argument("--max-pages", type=int, default=50)
+    p.add_argument("--order-field", default="created_at")
+    p.add_argument("--order-type", default="desc", choices=["asc", "desc"])
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_flow_health)
 
     p = sub.add_parser("stats-contacts", help="Aggregate contact statuses over paginated search")
     p.add_argument("--filter-json")

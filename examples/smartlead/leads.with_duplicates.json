@@ -1,0 +1,26 @@
+[
+  {
+    "email": "alex.rivera@example.com",
+    "first_name": "Alex",
+    "last_name": "Rivera",
+    "company_name": "NovaPilot",
+    "job_title": "VP Growth",
+    "linkedin_profile": "https://www.linkedin.com/in/alex-rivera-example"
+  },
+  {
+    "email": "alex.rivera@example.com",
+    "first_name": "Alex",
+    "last_name": "Rivera",
+    "company_name": "NovaPilot",
+    "job_title": "VP Growth",
+    "linkedin_profile": "https://www.linkedin.com/in/alex-rivera-example"
+  },
+  {
+    "email": "blocked@example.com",
+    "first_name": "Blocked",
+    "last_name": "Lead",
+    "company_name": "BlockedCo",
+    "job_title": "Founder",
+    "linkedin_profile": "https://www.linkedin.com/in/blocked-example"
+  }
+]

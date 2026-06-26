@@ -1,0 +1,47 @@
+[
+  {
+    "uuid": "msg_001",
+    "lead_uuid": "lead_001",
+    "linkedin_conversation_uuid": "conv_001",
+    "sender_profile_uuid": "sender_001",
+    "automation": { "uuid": "flow_001", "name": "Q3 Enterprise" },
+    "text": "Sounds good, let's book a demo.",
+    "created_at": "2026-06-10T10:00:00Z"
+  },
+  {
+    "uuid": "msg_002",
+    "lead_uuid": "lead_002",
+    "linkedin_conversation_uuid": "conv_002",
+    "sender_profile_uuid": "sender_001",
+    "automation": { "uuid": "flow_001", "name": "Q3 Enterprise" },
+    "text": "Please contact our founder instead.",
+    "created_at": "2026-06-10T11:00:00Z"
+  },
+  {
+    "uuid": "msg_003",
+    "lead_uuid": "lead_003",
+    "linkedin_conversation_uuid": "conv_003",
+    "sender_profile_uuid": "sender_002",
+    "automation": { "uuid": "flow_001", "name": "Q3 Enterprise" },
+    "text": "Maybe later, next month works better.",
+    "created_at": "2026-06-10T12:00:00Z"
+  },
+  {
+    "uuid": "msg_004",
+    "lead_uuid": "lead_004",
+    "linkedin_conversation_uuid": "conv_004",
+    "sender_profile_uuid": "sender_002",
+    "automation": { "uuid": "flow_001", "name": "Q3 Enterprise" },
+    "text": "Not interested, thanks.",
+    "created_at": "2026-06-10T13:00:00Z"
+  },
+  {
+    "uuid": "msg_005",
+    "lead_uuid": "lead_005",
+    "linkedin_conversation_uuid": "conv_005",
+    "sender_profile_uuid": "sender_003",
+    "automation": { "uuid": "flow_002", "name": "Q3 Enterprise" },
+    "text": "Automatic reply: I am out of office.",
+    "created_at": "2026-06-10T14:00:00Z"
+  }
+]

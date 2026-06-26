@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+      - name: Compile CLIs
+        run: python -m py_compile getsales/getsales.py smartlead/smartlead.py scripts/monthly_gtm_report.py
+      - name: Run tests
+        run: pytest
+      - name: Scan private markers
+        run: python scripts/scan_for_private_markers.py --root .
+      - name: Check playbooks are English-first
+        run: |
+          ! grep -RInE '(^## .*[А-Яа-я]|[А-Яа-я]{4,})' getsales/PLAYBOOK.md smartlead/PLAYBOOK.md

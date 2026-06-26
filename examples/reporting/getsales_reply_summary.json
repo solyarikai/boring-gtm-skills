@@ -1,0 +1,13 @@
+{
+  "automation": "Q3 Enterprise",
+  "total_replies": 1284,
+  "reply_intent_counts": {
+    "meeting_signal": 12,
+    "redirect": 38,
+    "timing_later": 45,
+    "wrong_person": 21,
+    "not_interested": 355,
+    "auto_reply": 412,
+    "neutral": 401
+  }
+}

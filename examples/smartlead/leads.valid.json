@@ -1,0 +1,20 @@
+[
+  {
+    "email": "alex.rivera@example.com",
+    "first_name": "Alex",
+    "last_name": "Rivera",
+    "company_name": "NovaPilot",
+    "job_title": "VP Growth",
+    "website": "https://novapilot.example",
+    "linkedin_profile": "https://www.linkedin.com/in/alex-rivera-example"
+  },
+  {
+    "email": "maya.chen@example.com",
+    "first_name": "Maya",
+    "last_name": "Chen",
+    "company_name": "SignalForge",
+    "job_title": "Head of Partnerships",
+    "website": "https://signalforge.example",
+    "linkedin_profile": "https://www.linkedin.com/in/maya-chen-example"
+  }
+]
