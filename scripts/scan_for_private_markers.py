@@ -18,13 +18,17 @@ DEFAULT_MARKERS = [
 ]
 
 SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", "tmp", "output", "reports"}
+SKIP_FILES = {Path("scripts/scan_for_private_markers.py")}
 
 
 def iter_files(root: Path):
     for path in root.rglob("*"):
         if not path.is_file():
             continue
-        if any(part in SKIP_DIRS for part in path.parts):
+        rel = path.relative_to(root)
+        if rel in SKIP_FILES:
+            continue
+        if any(part in SKIP_DIRS for part in rel.parts):
             continue
         yield path
 
